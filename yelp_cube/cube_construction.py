@@ -90,7 +90,7 @@ class YelpCube(object):
 			for line in f:
 				p = json.loads(line)
 				num_review += 1
-				if num_review % 10000 == 0:
+				if num_review % 1000 == 0:
 					print('%d reviews processed' % num_review)
 				if ('business_id' not in p) \
 				or (p['business_id'] not in self.business) \
@@ -102,8 +102,10 @@ class YelpCube(object):
 
 				cf.write(p['text']+'\n')
 				self.review_business.append(p['business_id'])
-				self.business_user[self.business.index(p['business_id'])].add(self.user.index(p['user_id']))
-				self.user_business[self.user.index(p['user_id'])].add(self.business.index(p['business_id']))
+				bid = self.business.index(p['business_id'])
+				uid = self.user.index(p['user_id'])
+				self.business_user[bid].add(uid)
+				self.user_business[uid].add(bid)
 
 		print('finised input reviews: %d/%d' % (len(self.review_business), num_review) )
 
