@@ -4,7 +4,7 @@ import os
 import re
 import json
 import random
-from time import gmtime, strftime
+import time
 from collections import defaultdict
 from subprocess import call
 
@@ -64,7 +64,7 @@ class YelpCube(object):
 		self.business_user = [set() for i in range(len(self.business))]
 		del business_all
 		print('finised input businesses: %d/%d' % (len(self.business), num_business) )
-		
+
 		#input users
 		user_all = set()
 		num_user = 0
@@ -84,6 +84,7 @@ class YelpCube(object):
 		del user_all
 		print('finised input users: %d/%d' % (len(self.user), num_user) )
 
+
 		#input reviews
 		num_review = 0
 		with open(self.params['yelp_review'], 'r') as f, open(self.params['content_file'], 'w') as cf:
@@ -99,18 +100,24 @@ class YelpCube(object):
 				or ('text' not in p) \
 				or (not re.match("^[\w\s,.:?-]+$", p['text'])):
 					continue
+			
+				try:
+					bid = self.business.index(p['business_id'])
+					uid = self.user.index(p['user_id'])
+				except ValueError:
+					continue
 
 				cf.write(p['text']+'\n')
 				self.review_business.append(p['business_id'])
-				bid = self.business.index(p['business_id'])
-				uid = self.user.index(p['user_id'])
 				self.business_user[bid].add(uid)
 				self.user_business[uid].add(bid)
 
 		print('finised input reviews: %d/%d' % (len(self.review_business), num_review) )
 
+		'''
 		#input checkins
 		num_checkin = 0
+		valid_checkin = 0
 		with open(self.params['yelp_checkin'], 'r') as f:
 			for line in f:
 				p = json.loads(line)
@@ -122,14 +129,21 @@ class YelpCube(object):
 					continue
 
 				valid_checkin += 1
+				if num_checkin % 1000 == 0:
+					print('proccessed %d/%d checkins' % (valid_checkin, num_checkin))
 				#self.business_user[self.business.index(p['business_id'])].add(self.user.index(p['user_id']))
 				#self.user_business[self.user.index(p['user_id'])].add(self.business.index(p['business_id']))
 
-		print('finised input reviews: %d/%d' % (valid_checkin, num_checkin) )
-
+		print('finised input checkins: %d/%d' % (valid_checkin, num_checkin) )
+		'''
+		
 		with open('models/step1.pkl', 'wb') as f:
 			pickle.dump(self, f)
 
+		print('step1: finished.')
+
+	def step2(self):
+		#sample businesses
 		if not os.path.exists('models/basenet.pkl'):
 			print('generating basenet.')
 			basenet = {}
@@ -146,11 +160,15 @@ class YelpCube(object):
 					for u in self.business_user[b]:
 						if random.random() < 0.2:
 							basenet['set0_test'].add((b, u))
+
+			starttime = time.time()
 			for b in basenet['set0_net0']:
 				for u in self.business_user[b]:
 					for b1 in self.user_business[u]:
 						basenet['set0_net1'].add(b1)
+
 			print('generated basenet 0 with net0/net1/test as %d/%d/%d' %(len(basenet['set0_net0']), len(basenet['set0_net1']), len(basenet['set0_test'])))
+			print('time spent %f s' % (time.time()-starttime))
 
 			for b in map(lambda x: self.business.index(x), self.business_il_goodforkids):
 				if random.random() < 0.5:
@@ -158,19 +176,17 @@ class YelpCube(object):
 					for u in self.business_user[b]:
 						if random.random() < 0.2:
 							basenet['set1_test'].add((b, u))
+
+			starttime = time.time()
 			for b in basenet['set1_net0']:
 				for u in self.business_user[b]:
 					for b1 in self.user_business[u]:
 						basenet['set1_net1'].add(b1)
 			print('generated basenet 1 with net0/net1/test as %d/%d/%d' %(len(basenet['set1_net0']), len(basenet['set1_net1']), len(basenet['set1_test'])))
-
+			print('time spent %f s' % (time.time()-starttime))
+			
 			with open('models/basenet.pkl', 'wb') as f:
 				pickle.dump(basenet, f)
-
-		print('step1: finished.')
-
-	def step2(self):
-		pass
 
 	def step3(self):
 		pass
