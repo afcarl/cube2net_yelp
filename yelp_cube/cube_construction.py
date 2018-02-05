@@ -105,7 +105,7 @@ class YelpCube(object):
 				except ValueError:
 					continue
 
-				cf.write(p['text'].replace('\n', '')+'\n')
+				cf.write((p['text'].replace('\n', '')+'\n').encode('utf-8'))
 				self.review_business.append(p['business_id'])
 				self.business_user[bid].add(uid)
 				self.user_business[uid].add(bid)
