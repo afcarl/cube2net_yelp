@@ -6,7 +6,6 @@ import json
 import random
 from time import gmtime, strftime
 from collections import defaultdict
-from gensim import corpora, models
 from subprocess import call
 
 class YelpCube(object):
@@ -167,118 +166,10 @@ class YelpCube(object):
 		print('step1: finished.')
 
 	def step2(self):
-		if not os.path.exists('models/segmentation.txt'):
-			call('./phrasal_segmentation.sh', shell=True, cwd='../AutoPhrase')
-		texts = []
-		line_num = 0
-		content = []
-		tag_beg = '<phrase>'
-		tag_end = '</phrase>'
-		with open('models/segmentation.txt', 'r') as f:
-			for line in f:
-				while line.find(tag_beg) >= 0:
-					beg = line.find(tag_beg)
-					end = line.find(tag_end)+len(tag_end)
-					content.append(line[beg:end].replace(tag_beg, '').replace(tag_end, '').lower())
-					line = line[:beg] + line[end:]
-				if line_num % 2 == 1:
-					texts.append(content)
-					content = []
-				line_num += 1
-				#if line_num % 20000 == 0:
-				#		print("step2: "+strftime("%Y-%m-%d %H:%M:%S", gmtime())+': processing paper '+str(line_num//2))
-
-		print("lda: constructing dictionary")
-		dictionary = corpora.Dictionary(texts)
-		print("lda: constructing doc-phrase matrix")
-		corpus = [dictionary.doc2bow(text) for text in texts]
-		print("lda: computing model")
-		if not os.path.exists('models/ldamodel.pkl'):
-			ldamodel = models.ldamodel.LdaModel(corpus, num_topics=self.params['num_topics'], id2word = dictionary, passes=20)
-			with open('models/ldamodel.pkl', 'wb') as f:
-				pickle.dump(ldamodel, f)
-		else:
-			with open('models/ldamodel.pkl', 'rb') as f:
-				ldamodel = pickle.load(f)
-		print("lda: saving topical phrases")
-		for i in range(self.params['num_topics']):
-			self.topic_name[i] = ldamodel.show_topic(i, topn=100)
-		with open(self.params['topic_file'], 'w') as f:
-			f.write(str(ldamodel.print_topics(num_topics=-1, num_words=10)))
-		print('lda: finished.')
-
-		counter = 0
-		for paper in corpus:
-			topics = ldamodel.get_document_topics(paper, minimum_probability=1e-4)
-			topics.sort(key=lambda tup: tup[1], reverse=True)
-			if len(topics) >= 1:
-				self.topic_author[topics[0][0]] |= self.paper_author[counter]
-				for a1 in self.paper_author[counter]:
-						for a2 in self.paper_author[counter]:
-							if a1 != a2:
-								self.topic_link[topics[0][0]][a1+','+a2] += 1
-			#if len(topics) >= 2:
-				#self.cell_content_two[topics[1][0]].append(counter)
-			#if len(topics) >= 3:
-				#self.cell_content_three[topics[2][0]].append(counter)
-			counter += 1
-
-		with open('models/step2.pkl', 'wb') as f:
-			pickle.dump(self, f)
-		print('step2: finished processing '+str(counter)+' papers.')
+		
 
 	def step3(self):
-		print('step3: writing network files.')
-		num_node = 0
-		num_edge = 0
-		with open('models/year_name.txt', 'w') as namef, open('models/year_node.txt', 'w') as nodef, open('models/year_link.txt', 'w') as linkf:
-			for year in self.year_name:
-				namef.write(str(year)+'\n')
-				nodef.write(str(self.year_name.index(year))+'\n')
-				num_node += 1
-				for year_c in self.year_name:
-					if abs(int(year) - int(year_c)) == 1:
-						linkf.write(str(self.year_name.index(year))+'\t'+str(self.year_name.index(year_c))+'\t1\n')
-						num_edge += 1
-		print('step3: finished year network files with '+str(num_node)+' nodes and '+str(num_edge)+' edges.')
-
-		num_node = 0
-		num_edge = 0
-		with open('models/venue_name.txt', 'w') as namef, open('models/venue_node.txt', 'w') as nodef, open('models/venue_link.txt', 'w') as linkf:
-			for venue in self.venue_name:
-				namef.write(''.join(venue.split())+'\n')
-				nodef.write(str(self.venue_name.index(venue))+'\n')
-				num_node += 1
-				for venue_c in self.venue_name:
-					if venue != venue_c:
-						same = len(set(venue.split()) & set(venue_c.split()))
-						if same > 0:
-							linkf.write(str(self.venue_name.index(venue))+'\t'+str(self.venue_name.index(venue_c))+'\t'+str(same)+'\n')
-							num_edge += 1
-		print('step3: finished venue network files with '+str(num_node)+' nodes and '+str(num_edge)+' edges.')
-
-		num_node = 0
-		num_edge = 0
-		with open('models/topic_name.txt', 'w') as namef, open('models/topic_node.txt', 'w') as nodef, open('models/topic_link.txt', 'w') as linkf:
-			for ind in range(len(self.topic_name)):
-				namef.write(str(self.topic_name[ind])+'\n')
-				nodef.write(str(ind)+'\n')
-				num_node += 1
-				for ind_c in range(len(self.topic_name)):
-					if ind != ind_c:
-						words = map(lambda x: x[0], self.topic_name[ind])
-						words_c = map(lambda x: x[0], self.topic_name[ind_c])
-						same = len(set(words) & set(words_c))
-						if same > 0:
-							linkf.write(str(ind)+'\t'+str(ind_c)+'\t'+str(same)+'\n')
-							num_edge += 1
-		print('step3: finished topic network files with '+str(num_node)+' nodes and '+str(num_edge)+' edges.')
-
-		self.venue_name
-		self.year_name
-		self.topic_name
-		with open('models/step3.pkl', 'wb') as f:
-			pickle.dump(self, f)
+		
 
 if __name__ == '__main__':
 	params = {}
