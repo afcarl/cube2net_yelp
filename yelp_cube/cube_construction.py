@@ -94,9 +94,7 @@ class YelpCube(object):
 				if num_review % 1000 == 0:
 					print('%d reviews processed' % num_review)
 				if ('business_id' not in p) \
-				or (p['business_id'] not in self.business) \
 				or ('user_id' not in p) \
-				or (p['user_id'] not in self.user) \
 				or ('text' not in p) \
 				or (not re.match("^[\w\s,.:?-]+$", p['text'])):
 					continue
