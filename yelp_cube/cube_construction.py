@@ -166,10 +166,10 @@ class YelpCube(object):
 		print('step1: finished.')
 
 	def step2(self):
-		
+		pass
 
 	def step3(self):
-		
+		pass
 
 if __name__ == '__main__':
 	params = {}
