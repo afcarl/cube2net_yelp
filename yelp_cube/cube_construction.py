@@ -90,6 +90,8 @@ class YelpCube(object):
 			for line in f:
 				p = json.loads(line)
 				num_review += 1
+				if num_review % 10000 == 0:
+					print('%d reviews processed' % num_review)
 				if ('business_id' not in p) \
 				or (p['business_id'] not in self.business) \
 				or ('user_id' not in p) \
