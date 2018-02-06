@@ -94,7 +94,7 @@ class YelpCube(object):
 				except KeyError:
 					continue
 
-				cf.write((p['text'].replace('\n', '')+'\n').encode('utf-8'))
+				cf.write((p['text'].replace('\n', '').replace('\r', '')+'\n').encode('utf-8'))
 				self.review_business.append(bid)
 				self.business_user[bid].add(uid)
 				self.user_business[uid].add(bid)
@@ -177,6 +177,54 @@ class YelpCube(object):
 			
 			with open('models/basenet.pkl', 'wb') as f:
 				pickle.dump(basenet, f)
+
+		if not os.path.exists('models/segmentation.txt'):
+			call('./phrasal_segmentation.sh', shell=True, cwd='../AutoPhrase')
+		texts = []
+		line_num = 0
+		content = []
+		tag_beg = '<phrase>'
+		tag_end = '</phrase>'
+		with open('models/segmentation.txt', 'r') as f:
+			for line in f:
+				while line.find(tag_beg) >= 0:
+					beg = line.find(tag_beg)
+					end = line.find(tag_end)+len(tag_end)
+					content.append(line[beg:end].replace(tag_beg, '').replace(tag_end, '').lower())
+					line = line[:beg] + line[end:]
+					texts.append(content)
+					content = []
+
+		print("lda: constructing dictionary")
+		dictionary = corpora.Dictionary(texts)
+		print("lda: constructing doc-phrase matrix")
+		corpus = [dictionary.doc2bow(text) for text in texts]
+		print("lda: computing model")
+		if not os.path.exists('models/ldamodel.pkl'):
+			ldamodel = models.ldamodel.LdaModel(corpus, num_topics=self.params['num_topics'], id2word = dictionary, passes=20)
+			with open('models/ldamodel.pkl', 'wb') as f:
+				pickle.dump(ldamodel, f)
+		else:
+			with open('models/ldamodel.pkl', 'rb') as f:
+				ldamodel = pickle.load(f)
+		print("lda: saving topical phrases")
+		for i in range(self.params['num_topics']):
+			self.topic_name[i] = ldamodel.show_topic(i, topn=100)
+		with open(self.params['topic_file'], 'w') as f:
+			f.write(str(ldamodel.print_topics(num_topics=-1, num_words=10)))
+		print('lda: finished.')
+
+		counter = 0
+		for doc in corpus:
+			topics = ldamodel.get_document_topics(doc, minimum_probability=1e-4)
+			topics.sort(key=lambda tup: tup[1], reverse=True)
+			if len(topics) >= 1:
+				self.topic_business[topics[0][0]].add(counter)
+			counter += 1
+
+		with open('models/step2.pkl', 'wb') as f:
+			pickle.dump(self, f)
+		print('step2: finished processing the reviews of %d businesses.' % counter)
 
 	def step3(self):
 		pass
