@@ -7,6 +7,7 @@ import random
 import time
 from collections import defaultdict
 from subprocess import call
+from gensim import corpora, models
 
 class YelpCube(object):
 	def __init__(self, params):
@@ -21,6 +22,7 @@ class YelpCube(object):
 		self.category_name = []
 		self.category_business = []
 		self.city_name = []
+		self.city_loc = []
 		self.city_business = []
 		self.topic_name = [[] for x in range(self.params['num_topics'])]
 		self.topic_business = [set() for x in range(self.params['num_topics'])]
@@ -50,13 +52,14 @@ class YelpCube(object):
 						self.category_name.append(cat)
 						self.category_business.append(set())
 					self.category_business[self.category_name.index(cat)].add(valid_business-1)
-				if p['city'] not in self.city_name:
-					self.city_name.append(p['city'])
+				if p['city'].lower() not in self.city_name:
+					self.city_name.append(p['city'].lower())
 					self.city_business.append(set())
-				self.city_business[self.city_name.index(p['city'])].add(valid_business-1)
+				self.city_business[self.city_name.index(p['city'].lower())].add(valid_business-1)
 
 		self.business_user = [set() for i in range(len(self.business_id))]
-		print('finised input businesses: %d/%d' % (valid_business, num_business) )
+		print('finished input businesses: %d/%d' % (valid_business, num_business) )
+		print('#cities: %d, #categories: %d ' % (len(self.city_name), len(self.category_name)))
 
 		#input users
 		num_user = 0
@@ -74,7 +77,7 @@ class YelpCube(object):
 				valid_user += 1
 
 		self.user_business = [set() for i in range(len(self.user_id))]
-		print('finised input users: %d/%d' % (valid_user, num_user) )
+		print('finished input users: %d/%d' % (valid_user, num_user) )
 
 		#input reviews
 		num_review = 0
@@ -99,7 +102,7 @@ class YelpCube(object):
 				self.business_user[bid].add(uid)
 				self.user_business[uid].add(bid)
 
-		print('finised input reviews: %d/%d' % (len(self.review_business), num_review) )
+		print('finished input reviews: %d/%d' % (len(self.review_business), num_review) )
 
 		'''
 		#input checkins
@@ -135,13 +138,15 @@ class YelpCube(object):
 			print('generating basenet.')
 			basenet = {}
 			basenet['set0_business'] = set()
+			basenet['set0_user'] = set()
 			basenet['set0_link'] = set()
 			basenet['set1_business'] = set()
+			basenet['set1_user'] = set()
 			basenet['set1_link'] = set()
 
-			business_ca_takeout = set()
 			business_il_goodforkids = set()
-
+			business_nv_takeout = set()
+			
 			with open(self.params['yelp_business'], 'r') as f:
 				for line in f:
 					p = json.loads(line)
@@ -149,39 +154,46 @@ class YelpCube(object):
 					or (p['business_id'] not in self.business_id):
 						continue
 
-				if p['state'].lower() == 'ca' and 'RestaurantsTakeOut' in p['attributes'] and p['attributes']['RestaurantsTakeOut']:
-					business_ca_takeout.add(valid_business-1)
-				if p['state'].lower() == 'il' and 'GoodForKids' in p['attributes'] and p['attributes']['GoodForKids']:
-					business_il_goodforkids.add(valid_business-1)
+					bid = self.business_id[p['business_id']]
+					if p['state'].lower() == 'il' and 'GoodForKids' in p['attributes'] and p['attributes']['GoodForKids']:
+						business_il_goodforkids.add(bid)
+					if p['state'].lower() == 'nv' and 'RestaurantsTakeOut' in p['attributes'] and p['attributes']['RestaurantsTakeOut']:
+						business_nv_takeout.add(bid)
+			print('got %d il_goodforkids business, %d nv_takeout business' % (len(business_il_goodforkids), len(business_nv_takeout)))
 
-
-			print('got %d ca_takeout business, %d il_goodforkids business' % (len(business_ca_takeout), len(business_il_goodforkids)))
-
-			for b in self.business_ca_takeout:
+			for b in business_il_goodforkids:
 				if random.random() < 0.5:
 					basenet['set0_business'].add(b)
 					for u in self.business_user[b]:
-						if random.random() < 0.2:
-							basenet['set0_link'].add((b, u))
-
-			print('generated basenet 0 with %d business and %d held links.' %(len(basenet['set0_business']), len(basenet['set0_link'])))
-
-			for b in self.business_il_goodforkids:
+						if random.random() < 0.8:
+							basenet['set0_user'].add(u)
+							if random.random() < 0.2:
+								basenet['set0_link'].add((b, u))
+			print('generated basenet0 with %d business, %d users and %d test links.' %(len(basenet['set0_business']), len(basenet['set0_user']), len(basenet['set0_link'])))
+			
+			for b in business_nv_takeout:
 				if random.random() < 0.5:
 					basenet['set1_business'].add(b)
 					for u in self.business_user[b]:
-						if random.random() < 0.2:
-							basenet['set1_link'].add((b, u))
+						if random.random() < 0.8:
+							basenet['set1_user'].add(u)
+							if random.random() < 0.2:
+								basenet['set1_link'].add((b, u))
+			print('generated basenet1 with %d business, %d users and %d test links.' %(len(basenet['set1_business']), len(basenet['set1_user']), len(basenet['set1_link'])))
 
-			print('generated basenet 1 with %d business and %d held links.' %(len(basenet['set1_business']), len(basenet['set1_link'])))
-			
 			with open('models/basenet.pkl', 'wb') as f:
 				pickle.dump(basenet, f)
 
+		
+		if os.path.exists('models/step2.pkl'):
+			print('step2: finished.') 
+			return
+
 		if not os.path.exists('models/segmentation.txt'):
 			call('./phrasal_segmentation.sh', shell=True, cwd='../AutoPhrase')
-		texts = []
-		line_num = 0
+
+		texts = [[] for i in range(len(self.business_id))]
+		rid = 0
 		content = []
 		tag_beg = '<phrase>'
 		tag_end = '</phrase>'
@@ -192,8 +204,14 @@ class YelpCube(object):
 					end = line.find(tag_end)+len(tag_end)
 					content.append(line[beg:end].replace(tag_beg, '').replace(tag_end, '').lower())
 					line = line[:beg] + line[end:]
-					texts.append(content)
-					content = []
+				texts[self.review_business[rid]] += content			
+				rid += 1
+				content = []
+		nb = 0
+		for t in texts:
+			if len(t) > 0:
+				nb += 1
+		print('finished processing %d reviews of %d/%d businesses.' % (rid, nb, len(texts)))
 
 		print("lda: constructing dictionary")
 		dictionary = corpora.Dictionary(texts)
@@ -224,17 +242,39 @@ class YelpCube(object):
 
 		with open('models/step2.pkl', 'wb') as f:
 			pickle.dump(self, f)
-		print('step2: finished processing the reviews of %d businesses.' % counter)
 
+		print('step2: finished.') 
+	
 	def step3(self):
-		pass
+		print('step3: writing network files.')
+		
+
+		num_node = 0
+		num_edge = 0
+		with open('models/topic_name.txt', 'w') as namef, open('models/topic_node.txt', 'w') as nodef, open('models/topic_link.txt', 'w') as linkf:
+			for ind in range(len(self.topic_name)):
+				namef.write(str(self.topic_name[ind])+'\n')
+				nodef.write(str(ind)+'\n')
+				num_node += 1
+				for ind_c in range(len(self.topic_name)):
+					if ind != ind_c:
+						words = map(lambda x: x[0], self.topic_name[ind])
+						words_c = map(lambda x: x[0], self.topic_name[ind_c])
+						same = len(set(words) & set(words_c))
+						if same > 0:
+							linkf.write(str(ind)+'\t'+str(ind_c)+'\t'+str(same)+'\n')
+							num_edge += 1
+		print('step3: finished topic network files with '+str(num_node)+' nodes and '+str(num_edge)+' edges.')
+
+		with open('models/step3.pkl', 'wb') as f:
+			pickle.dump(self, f)
 
 if __name__ == '__main__':
 	params = {}
 	#public parameters
 	params['content_file'] = 'models/content_file.txt'
 	params['topic_file'] = 'models/topic_file.txt'
-	params['num_topics'] = 100
+	params['num_topics'] = 20
 
 	#dblp parameters
 	params['dblp_files'] = ['../dblp-ref/dblp-ref-0.json', '../dblp-ref/dblp-ref-1.json', '../dblp-ref/dblp-ref-2.json', '../dblp-ref/dblp-ref-3.json']
@@ -252,7 +292,7 @@ if __name__ == '__main__':
 	if not os.path.exists('models/step1.pkl'):
 		cube = YelpCube(params)
 		cube.step1()
-	elif not os.path.exists('models/step2.pkl'):
+	elif not os.path.exists('models/step2.pkl') or not os.path.exists('models/basenet.pkl'):
 		with open('models/step1.pkl', 'rb') as f:
 			cube = pickle.load(f)
 		cube.step2()
